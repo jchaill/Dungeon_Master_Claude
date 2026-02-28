@@ -1,0 +1,620 @@
+{% extends "base.html" %}
+
+{% block title %}{{ campaign.name }} — Dungeon Master Claude{% endblock %}
+
+{% block main_class %}h-[calc(100vh-56px)] flex flex-col{% endblock %}
+
+{% block head_extra %}
+<script src="https://cdn.socket.io/4.7.4/socket.io.min.js"></script>
+{% endblock %}
+
+{% block content %}
+<div x-data="gameApp('{{ campaign_id }}')"
+     class="flex flex-col h-full">
+
+    <!-- Top bar -->
+    <div class="bg-dungeon-800 border-b border-dungeon-600 px-4 py-2 flex items-center justify-between shrink-0">
+        <div class="flex items-center gap-3">
+            <h1 class="font-bold text-gold-400 text-lg" x-text="campaignName || '{{ campaign.name }}'"></h1>
+            <span x-show="combat.is_active"
+                  class="bg-red-900 text-red-300 text-xs px-2 py-0.5 rounded-full">
+                ⚔️ Combat Round <span x-text="combat.round_number"></span>
+            </span>
+        </div>
+        <div class="flex items-center gap-3">
+            <span class="text-xs" :class="connected ? 'text-green-400' : 'text-red-400'">
+                <span x-show="connected">● Connected</span>
+                <span x-show="!connected">● Disconnected</span>
+            </span>
+            <span x-show="isPaused"
+                  class="bg-yellow-700 text-yellow-200 text-xs px-2 py-0.5 rounded-full font-semibold">
+                ⏸ Paused
+            </span>
+            <template x-if="isDM">
+                <div class="flex gap-2">
+                    <button @click="saveGame()" class="btn-secondary text-xs px-2 py-1">💾 Save</button>
+                    <button x-show="!isPaused" @click="pauseGame()" class="btn-secondary text-xs px-2 py-1">⏸ Pause</button>
+                    <button x-show="isPaused" @click="resumeGame()" class="btn-primary text-xs px-2 py-1">▶ Resume</button>
+                </div>
+            </template>
+            <template x-if="!players.find(p => p.player_id === playerId)?.character">
+                <a href="/character/new?campaign_id={{ campaign_id }}" class="btn-primary text-xs px-2 py-1">+ Character</a>
+            </template>
+        </div>
+    </div>
+
+    <!-- 3-panel layout -->
+    <div class="flex flex-1 overflow-hidden">
+
+        <!-- Left: Players panel -->
+        <div class="w-52 bg-dungeon-800 border-r border-dungeon-600 flex flex-col overflow-y-auto shrink-0">
+            <div class="px-3 py-2 border-b border-dungeon-600">
+                <h2 class="text-xs font-semibold text-gray-400 uppercase tracking-wide">Players</h2>
+                <p class="text-xs text-gold-400 mt-0.5 truncate">You: <span x-text="playerName"></span></p>
+            </div>
+            <div class="flex-1 p-2 space-y-2">
+                <template x-for="p in players" :key="p.player_id">
+                    <div class="rounded p-2"
+                         :class="p.player_id === playerId
+                             ? 'bg-dungeon-600 ring-1 ring-gold-500'
+                             : 'bg-dungeon-700'">
+                        <div class="flex items-center gap-1 mb-1"
+                             :class="(isDM && p.player_id !== playerId && p.character) ? 'cursor-pointer' : ''"
+                             @click="isDM && p.player_id !== playerId && p.character ? (expandedPlayer = expandedPlayer === p.player_id ? null : p.player_id) : null">
+                            <span class="w-2 h-2 rounded-full shrink-0"
+                                  :class="p.is_connected ? 'bg-green-400' : 'bg-gray-500'"></span>
+                            <span class="text-sm font-medium truncate"
+                                  :class="p.player_id === playerId ? 'text-gold-300' : 'text-white'"
+                                  x-text="p.player_id === playerId ? p.player_name + ' (you)' : p.player_name"></span>
+                            <span x-show="p.is_dm" class="text-xs text-gold-400">DM</span>
+                            <span x-show="isDM && p.player_id !== playerId && p.character"
+                                  class="ml-auto text-gray-500 text-xs"
+                                  x-text="expandedPlayer === p.player_id ? '▲' : '▼'"></span>
+                        </div>
+                        <template x-if="p.character">
+                            <div class="text-xs text-gray-400 space-y-1">
+                                <!-- Name + class (always shown) -->
+                                <div x-text="p.character.name"></div>
+                                <div class="text-gray-500" x-text="p.character.race + ' ' + p.character.class_name + ' · Lv ' + p.character.level"></div>
+                                <!-- HP bar (always shown) -->
+                                <div class="flex items-center gap-1">
+                                    <span class="text-red-400">❤</span>
+                                    <span x-text="p.character.current_hp + '/' + p.character.max_hp"
+                                          :class="p.character.current_hp < p.character.max_hp / 2 ? 'text-red-400' : 'text-green-400'"></span>
+                                    <template x-if="p.character.temp_hp > 0">
+                                        <span class="text-blue-400" x-text="'(+' + p.character.temp_hp + ')'"></span>
+                                    </template>
+                                </div>
+                                <!-- Extended info for own card or DM-expanded card -->
+                                <template x-if="p.player_id === playerId || expandedPlayer === p.player_id">
+                                    <div class="space-y-1 pt-1 border-t border-dungeon-500">
+                                        <!-- AC + Proficiency -->
+                                        <div class="flex justify-between">
+                                            <span>🛡 <span class="text-white" x-text="p.character.armor_class"></span> Armor Class</span>
+                                            <span>Prof <span class="text-white" x-text="'+' + p.character.proficiency_bonus"></span></span>
+                                        </div>
+                                        <!-- Ability modifiers -->
+                                        <div class="grid grid-cols-3 gap-x-1 gap-y-0.5 text-center pt-0.5">
+                                            <template x-for="ab in ['strength','dexterity','constitution','intelligence','wisdom','charisma']" :key="ab">
+                                                <div class="bg-dungeon-700 rounded px-1 py-0.5">
+                                                    <div class="text-gray-500 uppercase" x-text="ab.slice(0,3)"></div>
+                                                    <div class="text-white font-medium"
+                                                         x-text="(Math.floor((p.character.abilities[ab] - 10) / 2) >= 0 ? '+' : '') + Math.floor((p.character.abilities[ab] - 10) / 2)"></div>
+                                                </div>
+                                            </template>
+                                        </div>
+                                        <!-- Conditions -->
+                                        <template x-if="p.character.conditions && p.character.conditions.length > 0">
+                                            <div class="flex flex-wrap gap-1 pt-0.5">
+                                                <template x-for="cond in p.character.conditions" :key="cond">
+                                                    <span class="bg-yellow-900 text-yellow-300 px-1 rounded" x-text="cond"></span>
+                                                </template>
+                                            </div>
+                                        </template>
+                                        <!-- Skills -->
+                                        <template x-if="Object.values(p.character.skills || {}).some(v => v)">
+                                            <div class="pt-1 border-t border-dungeon-500">
+                                                <div class="text-gray-500 uppercase tracking-wide mb-1">Skill Proficiencies</div>
+                                                <div class="flex flex-wrap gap-1">
+                                                    <template x-for="[skill, prof] in Object.entries(p.character.skills || {})" :key="skill">
+                                                        <template x-if="prof">
+                                                            <span class="bg-dungeon-700 text-green-300 px-1.5 py-0.5 rounded capitalize"
+                                                                  x-text="skill.replace(/_/g, ' ')"></span>
+                                                        </template>
+                                                    </template>
+                                                </div>
+                                            </div>
+                                        </template>
+                                        <!-- Inventory -->
+                                        <template x-if="p.character.inventory && p.character.inventory.length > 0">
+                                            <div class="pt-1 border-t border-dungeon-500">
+                                                <div class="text-gray-500 uppercase tracking-wide mb-1">Inventory</div>
+                                                <div class="space-y-0.5">
+                                                    <template x-for="item in p.character.inventory" :key="item.id">
+                                                        <div class="flex justify-between items-center text-white">
+                                                            <span x-text="item.name"></span>
+                                                            <span x-show="item.quantity > 1" class="text-gray-500 ml-1" x-text="'×' + item.quantity"></span>
+                                                        </div>
+                                                    </template>
+                                                </div>
+                                            </div>
+                                        </template>
+                                        <!-- Actions -->
+                                        <template x-if="p.character.actions && p.character.actions.length > 0">
+                                            <div class="pt-1 border-t border-dungeon-500">
+                                                <div class="text-gray-500 uppercase tracking-wide mb-1">Actions</div>
+                                                <div class="flex flex-wrap gap-1">
+                                                    <template x-for="action in p.character.actions" :key="action">
+                                                        <span class="bg-dungeon-700 text-white px-1.5 py-0.5 rounded" x-text="action"></span>
+                                                    </template>
+                                                </div>
+                                            </div>
+                                        </template>
+                                        <!-- Spells -->
+                                        <template x-if="p.character.known_spells && p.character.known_spells.length > 0">
+                                            <div class="pt-1 border-t border-dungeon-500">
+                                                <div class="text-gray-500 uppercase tracking-wide mb-1">Spells</div>
+                                                <div class="flex flex-wrap gap-1">
+                                                    <template x-for="spell in p.character.known_spells" :key="spell">
+                                                        <span class="bg-purple-900 text-purple-300 px-1.5 py-0.5 rounded" x-text="spell"></span>
+                                                    </template>
+                                                </div>
+                                            </div>
+                                        </template>
+                                    </div>
+                                </template>
+                                <span x-show="p.is_ready" class="text-green-400">✓ Ready</span>
+                            </div>
+                        </template>
+                        <template x-if="!p.character">
+                            <div class="text-xs text-gray-500">No character</div>
+                        </template>
+                    </div>
+                </template>
+                <p x-show="players.length === 0" class="text-xs text-gray-500 text-center py-2">
+                    No players yet
+                </p>
+            </div>
+            <div class="p-2 border-t border-dungeon-600">
+                <button @click="toggleReady()"
+                        :class="isReady ? 'btn-gold' : 'btn-secondary'"
+                        class="w-full text-xs py-1">
+                    <span x-text="isReady ? '✓ Ready' : 'Ready Up'"></span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Center: Narrative / Chat -->
+        <div class="flex-1 flex flex-col overflow-hidden relative">
+            <!-- Pause overlay -->
+            <div x-show="isPaused && !isDM"
+                 class="absolute inset-0 bg-black bg-opacity-60 flex items-center justify-center z-10">
+                <div class="bg-dungeon-900 border border-yellow-600 rounded-xl px-8 py-6 text-center shadow-2xl">
+                    <div class="text-5xl mb-3">⏸</div>
+                    <h2 class="text-xl font-bold text-yellow-300 mb-2">Session Paused</h2>
+                    <p class="text-sm text-gray-400">The DM has paused the session.<br>Please wait for the game to resume.</p>
+                </div>
+            </div>
+            <!-- Messages -->
+            <div id="chat-messages"
+                 class="flex-1 overflow-y-auto p-4 space-y-3"
+                 x-ref="chatBox">
+                <template x-for="msg in messages" :key="msg.id || msg.timestamp">
+                    <div :class="{
+                        'flex justify-end': msg.sender_type === 'player' && msg.sender_id === playerId,
+                        'flex justify-start': msg.sender_type !== 'player' || msg.sender_id !== playerId,
+                    }">
+                        <div :class="{
+                            'chat-bubble-player': msg.sender_type === 'player' && msg.sender_id === playerId,
+                            'chat-bubble-dm':     msg.sender_type === 'dm',
+                            'chat-bubble-system': msg.sender_type === 'system',
+                            'chat-bubble-other':  msg.sender_type === 'player' && msg.sender_id !== playerId,
+                        }" class="max-w-lg rounded-lg px-4 py-2">
+                            <div x-show="msg.sender_type !== 'system'"
+                                 class="text-xs mb-1 opacity-70"
+                                 x-text="msg.sender_name || msg.sender_type"></div>
+                            <div class="text-sm whitespace-pre-wrap" x-text="msg.content"></div>
+                        </div>
+                    </div>
+                </template>
+                <div x-show="dmTyping" class="flex justify-start">
+                    <div class="chat-bubble-dm max-w-xs rounded-lg px-4 py-2">
+                        <div class="text-xs mb-1 opacity-70">Dungeon Master</div>
+                        <div class="flex gap-1">
+                            <span class="typing-dot"></span>
+                            <span class="typing-dot" style="animation-delay:0.2s"></span>
+                            <span class="typing-dot" style="animation-delay:0.4s"></span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Input -->
+            <div class="border-t border-dungeon-600 p-3 bg-dungeon-800">
+                <div x-show="dmTyping" class="flex items-center gap-2 text-sm text-gold-400 mb-2">
+                    <svg class="animate-spin h-4 w-4 shrink-0" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+                    </svg>
+                    The Dungeon Master is thinking...
+                </div>
+                <form @submit.prevent="sendAction()" class="flex gap-2">
+                    <input type="text"
+                           x-model="inputText"
+                           placeholder="Describe your action or type a message..."
+                           class="input-field flex-1"
+                           :disabled="!connected || dmTyping || (isPaused && !isDM)">
+                    <button type="button" @click="rollD20()" class="btn-secondary px-3" title="Roll d20" :disabled="dmTyping || (isPaused && !isDM)">🎲</button>
+                    <button type="submit" class="btn-primary px-4" :disabled="!connected || !inputText.trim() || dmTyping || (isPaused && !isDM)">
+                        <span x-show="!dmTyping">Send</span>
+                        <span x-show="dmTyping" class="flex items-center gap-1">
+                            <svg class="animate-spin h-3 w-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+                            </svg>
+                            Wait
+                        </span>
+                    </button>
+                </form>
+                <div x-show="lastRoll" class="text-xs text-gold-400 mt-1" x-text="lastRoll"></div>
+            </div>
+        </div>
+
+        <!-- Right: Combat tracker -->
+        <div class="w-52 bg-dungeon-800 border-l border-dungeon-600 flex flex-col shrink-0 overflow-y-auto">
+            <div class="px-3 py-2 border-b border-dungeon-600">
+                <h2 class="text-xs font-semibold text-gray-400 uppercase tracking-wide">Combat</h2>
+            </div>
+
+            <div x-show="!combat.is_active" class="p-3 text-xs text-gray-500 text-center">
+                <p>No active combat</p>
+                <template x-if="isDM">
+                    <button @click="showCombatSetup = !showCombatSetup"
+                            class="btn-secondary mt-2 w-full text-xs py-1">
+                        ⚔️ Start Combat
+                    </button>
+                </template>
+            </div>
+
+            <div x-show="combat.is_active" class="flex-1 p-2">
+                <div class="text-xs text-gold-400 font-semibold mb-2">
+                    Round <span x-text="combat.round_number"></span>
+                </div>
+                <div class="space-y-1">
+                    <template x-for="(c, idx) in combat.combatants" :key="c.id">
+                        <div :class="{
+                                'bg-gold-600 bg-opacity-20 border border-gold-600': idx === combat.current_index,
+                                'bg-dungeon-700': idx !== combat.current_index
+                             }"
+                             class="rounded p-2">
+                            <div class="flex justify-between items-center">
+                                <span class="text-xs font-medium text-white truncate" x-text="c.name"></span>
+                                <span class="text-xs text-gray-400" x-text="c.initiative"></span>
+                            </div>
+                            <div class="flex items-center gap-1 mt-0.5">
+                                <span class="text-red-400 text-xs">❤</span>
+                                <span class="text-xs" :class="c.hp < c.max_hp/2 ? 'text-red-400' : 'text-green-400'"
+                                      x-text="c.hp + '/' + c.max_hp"></span>
+                            </div>
+                            <div x-show="c.conditions && c.conditions.length > 0" class="flex flex-wrap gap-1 mt-1">
+                                <template x-for="cond in c.conditions" :key="cond">
+                                    <span class="text-xs bg-yellow-900 text-yellow-300 px-1 rounded" x-text="cond"></span>
+                                </template>
+                            </div>
+                        </div>
+                    </template>
+                </div>
+                <template x-if="isDM">
+                    <div class="mt-3 space-y-1">
+                        <button @click="nextTurn()" class="btn-primary w-full text-xs py-1">Next Turn →</button>
+                        <button @click="endCombat()" class="btn-secondary w-full text-xs py-1">End Combat</button>
+                    </div>
+                </template>
+            </div>
+
+            <!-- DM combat setup -->
+            <div x-show="showCombatSetup && isDM" class="p-2 border-t border-dungeon-600">
+                <p class="text-xs text-gray-400 mb-2">Quick start: add NPCs</p>
+                <input type="text" x-model="newNpcName"
+                       placeholder="NPC name" class="input-field w-full text-xs py-1 mb-1">
+                <div class="flex gap-1">
+                    <input type="number" x-model.number="newNpcHp" placeholder="HP" min="1"
+                           class="input-field w-16 text-xs py-1">
+                    <button @click="addNpc()" class="btn-secondary flex-1 text-xs py-1">Add</button>
+                </div>
+                <div class="mt-2 space-y-1 max-h-24 overflow-y-auto">
+                    <template x-for="(npc, i) in pendingNpcs" :key="i">
+                        <div class="flex items-center justify-between text-xs">
+                            <span x-text="npc.name + ' (' + npc.hp + 'HP)'"></span>
+                            <button @click="pendingNpcs.splice(i, 1)" class="text-red-400">✕</button>
+                        </div>
+                    </template>
+                </div>
+                <button x-show="pendingNpcs.length > 0"
+                        @click="startCombat()"
+                        class="btn-gold w-full text-xs py-1 mt-2">
+                    Roll Initiative!
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/app.js"></script>
+<script>
+const CAMPAIGN_ID = '{{ campaign_id }}';
+
+function gameApp(campaignId) {
+    return {
+        campaignId,
+        campaignName: '{{ campaign.name }}',
+        connected: false,
+        socket: null,
+        messages: [],
+        players: [],
+        combat: { is_active: false, round_number: 1, current_index: 0, combatants: [] },
+        inputText: '',
+        lastRoll: '',
+        dmTyping: false,
+        isReady: false,
+        isPaused: false,
+        expandedPlayer: null,
+        showCombatSetup: false,
+        newNpcName: '',
+        newNpcHp: 10,
+        pendingNpcs: [],
+
+        get token() { return localStorage.getItem('dm_token'); },
+        get playerId() { return localStorage.getItem('player_id'); },
+        get playerName() { return localStorage.getItem('player_name'); },
+        get isDM() { return localStorage.getItem('is_dm') === 'true'; },
+
+        async init() {
+            if (!this.token) {
+                window.location.href = '/';
+                return;
+            }
+            await this.loadState();
+            this.connectSocket();
+        },
+
+        async loadState() {
+            try {
+                const res = await fetch('/api/game/state', {
+                    headers: { 'Authorization': 'Bearer ' + this.token }
+                });
+                if (!res.ok) return;
+                const data = await res.json();
+                this.messages = data.messages.map(m => ({
+                    ...m,
+                    sender_name: m.sender_type === 'dm' ? 'Dungeon Master' : m.sender_id,
+                    timestamp: m.created_at,
+                }));
+                if (data.combat) this.combat = data.combat;
+                if (data.campaign) this.isPaused = data.campaign.is_paused || false;
+                // Build player list from campaign characters
+                const chars = data.campaign.player_characters || [];
+                this.players = chars.map(c => ({
+                    player_id: c.player_id,
+                    player_name: c.player_name,
+                    is_dm: false,
+                    is_connected: false,
+                    character: c,
+                }));
+                this.$nextTick(() => this.scrollChat());
+            } catch(e) {
+                console.error('loadState:', e);
+            }
+        },
+
+        connectSocket() {
+            this.socket = io({ auth: { token: this.token } });
+
+            this.socket.on('connect', () => {
+                this.connected = true;
+                console.log('Socket connected');
+            });
+            this.socket.on('disconnect', () => {
+                this.connected = false;
+            });
+
+            this.socket.on('dm_typing', () => {
+                this.dmTyping = true;
+                clearTimeout(this._dmTypingTimeout);
+                this._dmTypingTimeout = setTimeout(() => { this.dmTyping = false; }, 150000);
+            });
+
+            this.socket.on('chat_message', (msg) => {
+                if (msg.sender_type === 'dm' || msg.sender_type === 'system') {
+                    this.dmTyping = false;
+                    clearTimeout(this._dmTypingTimeout);
+                }
+                this.messages.push({ ...msg, timestamp: new Date().toISOString() });
+                this.$nextTick(() => this.scrollChat());
+            });
+
+            this.socket.on('player_joined', (data) => {
+                const existing = this.players.find(p => p.player_id === data.player_id);
+                if (!existing) {
+                    this.players.push({ ...data, is_connected: true, character: null });
+                } else {
+                    existing.is_connected = true;
+                }
+                this.messages.push({
+                    sender_type: 'system',
+                    sender_name: 'System',
+                    content: `${data.player_name} joined the campaign`,
+                    timestamp: new Date().toISOString(),
+                });
+                this.$nextTick(() => this.scrollChat());
+            });
+
+            this.socket.on('player_left', (data) => {
+                const p = this.players.find(p => p.player_id === data.player_id);
+                if (p) p.is_connected = false;
+                this.messages.push({
+                    sender_type: 'system',
+                    sender_name: 'System',
+                    content: `${data.player_name} left the campaign`,
+                    timestamp: new Date().toISOString(),
+                });
+                this.$nextTick(() => this.scrollChat());
+            });
+
+            this.socket.on('player_ready', (data) => {
+                const p = this.players.find(p => p.player_id === data.player_id);
+                if (p) p.is_ready = data.is_ready;
+            });
+
+            this.socket.on('combat_update', (data) => {
+                this.combat = data;
+            });
+
+            this.socket.on('game_state', (data) => {
+                if (data.campaign) {
+                    this.campaignName = data.campaign.name;
+                    if (data.campaign.is_combat_active !== undefined) {
+                        this.combat.is_active = data.campaign.is_combat_active;
+                    }
+                    if (data.campaign.is_paused !== undefined) {
+                        this.isPaused = data.campaign.is_paused;
+                    }
+                }
+            });
+
+            this.socket.on('game_paused', () => { this.isPaused = true; });
+            this.socket.on('game_resumed', () => { this.isPaused = false; });
+
+            this.socket.on('character_update', (data) => {
+                const p = this.players.find(p => p.player_id === data.player_id);
+                if (p) p.character = data.character;
+            });
+        },
+
+        sendAction() {
+            const content = this.inputText.trim();
+            if (!content || !this.connected || this.dmTyping) return;
+            this.inputText = '';
+            this.socket.emit('action', { content });
+        },
+
+        async rollD20() {
+            const res = await fetch('/api/dice/roll', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ notation: 'd20' }),
+            });
+            const data = await res.json();
+            this.lastRoll = `d20: ${data.total}`;
+            setTimeout(() => { this.lastRoll = ''; }, 5000);
+        },
+
+        toggleReady() {
+            this.isReady = !this.isReady;
+            this.socket.emit('ready_toggle', { is_ready: this.isReady });
+        },
+
+        async saveGame() {
+            await fetch('/api/game/save', {
+                method: 'POST',
+                headers: { 'Authorization': 'Bearer ' + this.token }
+            });
+        },
+
+        async pauseGame() {
+            await fetch('/api/game/pause', {
+                method: 'POST',
+                headers: { 'Authorization': 'Bearer ' + this.token }
+            });
+        },
+
+        async resumeGame() {
+            await fetch('/api/game/resume', {
+                method: 'POST',
+                headers: { 'Authorization': 'Bearer ' + this.token }
+            });
+        },
+
+        addNpc() {
+            if (!this.newNpcName.trim()) return;
+            this.pendingNpcs.push({ name: this.newNpcName, hp: this.newNpcHp, max_hp: this.newNpcHp });
+            this.newNpcName = '';
+            this.newNpcHp = 10;
+        },
+
+        async startCombat() {
+            const participants = [
+                ...this.players.filter(p => p.character).map(p => ({
+                    id: p.character.id,
+                    name: p.character.name,
+                    dex_modifier: Math.floor((p.character.abilities?.dexterity - 10) / 2) || 0,
+                    hp: p.character.current_hp,
+                    max_hp: p.character.max_hp,
+                    is_player: true,
+                })),
+                ...this.pendingNpcs.map((n, i) => ({
+                    id: 'npc_' + i + '_' + Date.now(),
+                    name: n.name,
+                    dex_modifier: 0,
+                    hp: n.hp,
+                    max_hp: n.max_hp,
+                    is_player: false,
+                })),
+            ];
+            const res = await fetch('/api/dm/combat/start', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': 'Bearer ' + this.token,
+                },
+                body: JSON.stringify({ campaign_id: this.campaignId, participants }),
+            });
+            if (res.ok) {
+                const data = await res.json();
+                this.combat = data.combat;
+                this.showCombatSetup = false;
+                this.pendingNpcs = [];
+                this.socket.emit('action', { content: '⚔️ Combat has started!' });
+            }
+        },
+
+        async nextTurn() {
+            const res = await fetch('/api/dm/combat/next', {
+                method: 'POST',
+                headers: { 'Authorization': 'Bearer ' + this.token },
+            });
+            if (res.ok) {
+                const data = await res.json();
+                this.combat = data.combat;
+                if (data.new_round) {
+                    this.messages.push({
+                        sender_type: 'system',
+                        sender_name: 'System',
+                        content: `⚔️ Round ${data.round_number} begins!`,
+                        timestamp: new Date().toISOString(),
+                    });
+                    this.$nextTick(() => this.scrollChat());
+                }
+            }
+        },
+
+        async endCombat() {
+            const res = await fetch('/api/dm/combat/end', {
+                method: 'POST',
+                headers: { 'Authorization': 'Bearer ' + this.token },
+            });
+            if (res.ok) {
+                this.combat = { is_active: false, round_number: 1, current_index: 0, combatants: [] };
+            }
+        },
+
+        scrollChat() {
+            const box = this.$refs.chatBox;
+            if (box) box.scrollTop = box.scrollHeight;
+        },
+    };
+}
+</script>
+{% endblock %}

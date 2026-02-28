@@ -1,0 +1,322 @@
+{% extends "base.html" %}
+
+{% block title %}Campaigns — Dungeon Master Claude{% endblock %}
+
+{% block content %}
+<div x-data="campaignApp()" class="space-y-8">
+
+    <!-- Hero -->
+    <div class="text-center py-8">
+        <h1 class="text-4xl font-bold text-gold-400 mb-2">Dungeon Master Claude</h1>
+        <p class="text-gray-400">AI-powered D&amp;D 5e — multiplayer, browser-based</p>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+
+        <!-- Active Campaigns -->
+        <div class="bg-dungeon-800 rounded-lg border border-dungeon-600 p-6">
+            <h2 class="text-xl font-semibold text-gold-400 mb-4">Active Campaigns</h2>
+
+            <template x-if="campaigns.length === 0">
+                <p class="text-gray-500 text-center py-4">No active campaigns. Create one below!</p>
+            </template>
+
+            <template x-for="c in campaigns" :key="c.id">
+                <div class="flex items-center justify-between p-3 bg-dungeon-700 rounded mb-2">
+                    <div>
+                        <span class="font-medium text-white" x-text="c.name"></span>
+                        <span class="text-xs text-gray-400 ml-2" x-text="c.id.substring(0, 8) + '...'"></span>
+                    </div>
+                    <div class="flex gap-2">
+                        <button
+                            @click="openJoinModal(c.id, c.name)"
+                            class="btn-primary text-sm px-3 py-1">
+                            Join
+                        </button>
+                        <button
+                            @click="openDeleteModal(c.id, c.name)"
+                            class="btn-secondary text-sm px-3 py-1 text-red-400 hover:text-red-300">
+                            ✕
+                        </button>
+                    </div>
+                </div>
+            </template>
+        </div>
+
+        <!-- Actions Panel -->
+        <div class="space-y-6">
+
+            <!-- Join Campaign -->
+            <div class="bg-dungeon-800 rounded-lg border border-dungeon-600 p-6">
+                <h2 class="text-xl font-semibold text-gold-400 mb-4">Join a Campaign</h2>
+                <form @submit.prevent="joinCampaign()">
+                    <div class="space-y-3">
+                        <input type="text" x-model="joinForm.playerName"
+                               placeholder="Your name"
+                               class="input-field w-full" required>
+                        <input type="text" x-model="joinForm.campaignId"
+                               placeholder="Campaign ID"
+                               class="input-field w-full" required>
+                        <input type="password" x-model="joinForm.dmPassword"
+                               placeholder="DM password (optional — DMs only)"
+                               class="input-field w-full">
+                        <button type="submit" class="btn-primary w-full" :disabled="joinLoading">
+                            <span x-show="!joinLoading">Join Campaign</span>
+                            <span x-show="joinLoading">Joining...</span>
+                        </button>
+                    </div>
+                    <p x-show="joinError" x-text="joinError" class="text-red-400 text-sm mt-2"></p>
+                </form>
+            </div>
+
+            <!-- Create Campaign (DM only) -->
+            <div class="bg-dungeon-800 rounded-lg border border-dungeon-600 p-6">
+                <h2 class="text-xl font-semibold text-gold-400 mb-4">Create Campaign <span class="text-sm text-gray-400">(DM)</span></h2>
+                <form @submit.prevent="createCampaign()">
+                    <div class="space-y-3">
+                        <input type="text" x-model="createForm.name"
+                               placeholder="Campaign name"
+                               class="input-field w-full" required>
+                        <input type="password" x-model="createForm.dmPassword"
+                               placeholder="DM password"
+                               class="input-field w-full" required>
+                        <button type="submit" class="btn-gold w-full" :disabled="createLoading">
+                            <span x-show="!createLoading">⚔️ Create Campaign</span>
+                            <span x-show="createLoading">Creating...</span>
+                        </button>
+                    </div>
+                    <p x-show="createError" x-text="createError" class="text-red-400 text-sm mt-2"></p>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Join Modal -->
+    <div x-show="showJoinModal"
+         x-transition
+         class="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50"
+         @click.self="showJoinModal = false">
+        <div class="bg-dungeon-800 border border-gold-600 rounded-lg p-6 w-96">
+            <h3 class="text-lg font-semibold text-gold-400 mb-4">Join: <span x-text="modalCampaignName"></span></h3>
+            <div class="space-y-3">
+                <!-- Player selector -->
+                <div x-show="modalPlayersLoading" class="text-gray-400 text-sm text-center py-1">Loading players...</div>
+                <template x-if="!modalPlayersLoading">
+                    <div>
+                        <select x-model="joinForm.playerName" class="input-field w-full">
+                            <option value="">— Select your name —</option>
+                            <template x-for="p in modalPlayers" :key="p.id">
+                                <option :value="p.name" x-text="p.name + (p.is_dm ? ' (DM)' : '')"></option>
+                            </template>
+                            <option value="__new__">➕ New player...</option>
+                        </select>
+                        <input x-show="joinForm.playerName === '__new__'"
+                               x-model="joinForm.newPlayerName"
+                               type="text"
+                               placeholder="Enter your name"
+                               class="input-field w-full mt-2">
+                    </div>
+                </template>
+                <input type="password" x-model="joinForm.dmPassword"
+                       placeholder="DM password (optional)"
+                       class="input-field w-full">
+                <div class="flex gap-2">
+                    <button @click="joinCampaign()" class="btn-primary flex-1"
+                            :disabled="!joinForm.playerName || (joinForm.playerName === '__new__' && !joinForm.newPlayerName.trim())">
+                        Join
+                    </button>
+                    <button @click="showJoinModal = false" class="btn-secondary flex-1">Cancel</button>
+                </div>
+                <p x-show="joinError" x-text="joinError" class="text-red-400 text-sm"></p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Delete Modal -->
+    <div x-show="showDeleteModal"
+         x-transition
+         class="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50"
+         @click.self="showDeleteModal = false">
+        <div class="bg-dungeon-800 border border-red-600 rounded-lg p-6 w-96">
+            <h3 class="text-lg font-semibold text-red-400 mb-1">Delete Campaign</h3>
+            <p class="text-gray-400 text-sm mb-4">
+                Permanently delete <span class="text-white font-medium" x-text="deleteModal.campaignName"></span>?
+                This removes all players, characters, and messages.
+            </p>
+            <div class="space-y-3">
+                <input type="password" x-model="deleteModal.dmPassword"
+                       placeholder="DM password to confirm"
+                       class="input-field w-full"
+                       @keydown.enter="deleteCampaign()">
+                <p x-show="deleteModal.error" x-text="deleteModal.error" class="text-red-400 text-sm"></p>
+                <div class="flex gap-2">
+                    <button @click="deleteCampaign()"
+                            class="flex-1 py-2 rounded bg-red-700 hover:bg-red-600 text-white text-sm font-medium"
+                            :disabled="deleteModal.loading">
+                        <span x-show="!deleteModal.loading">Delete</span>
+                        <span x-show="deleteModal.loading">Deleting...</span>
+                    </button>
+                    <button @click="showDeleteModal = false" class="btn-secondary flex-1">Cancel</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function campaignApp() {
+    return {
+        campaigns: [],
+        showJoinModal: false,
+        modalCampaignName: '',
+        modalPlayers: [],
+        modalPlayersLoading: false,
+        joinLoading: false,
+        createLoading: false,
+        joinError: '',
+        createError: '',
+        joinForm: { playerName: '', newPlayerName: '', campaignId: '', dmPassword: '' },
+        createForm: { name: '', dmPassword: '' },
+        showDeleteModal: false,
+        deleteModal: { campaignId: '', campaignName: '', dmPassword: '', error: '', loading: false },
+        _refreshInterval: null,
+
+        async init() {
+            await this.loadCampaigns();
+            this._refreshInterval = setInterval(() => this.loadCampaigns(), 10000);
+        },
+
+        destroy() {
+            clearInterval(this._refreshInterval);
+        },
+
+        async loadCampaigns() {
+            try {
+                const res = await fetch('/api/sessions');
+                if (res.ok) this.campaigns = await res.json();
+            } catch (e) {
+                console.error('Failed to load campaigns:', e);
+            }
+        },
+
+        async openJoinModal(campaignId, campaignName) {
+            this.joinForm = { playerName: '', newPlayerName: '', campaignId, dmPassword: '' };
+            this.joinError = '';
+            this.modalCampaignName = campaignName;
+            this.modalPlayers = [];
+            this.modalPlayersLoading = true;
+            this.showJoinModal = true;
+            try {
+                const res = await fetch(`/api/sessions/${campaignId}`);
+                if (res.ok) {
+                    const data = await res.json();
+                    const seen = new Map();
+                    for (const p of (data.players || [])) seen.set(p.name, p);
+                    this.modalPlayers = [...seen.values()];
+                }
+            } catch (e) {
+                console.error('Failed to load players:', e);
+            } finally {
+                this.modalPlayersLoading = false;
+            }
+        },
+
+        async joinCampaign() {
+            this.joinError = '';
+            this.joinLoading = true;
+            const playerName = this.joinForm.playerName === '__new__'
+                ? this.joinForm.newPlayerName.trim()
+                : this.joinForm.playerName;
+            try {
+                const res = await fetch('/api/auth/join', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        player_name: playerName,
+                        campaign_id: this.joinForm.campaignId,
+                        dm_password: this.joinForm.dmPassword || null,
+                    }),
+                });
+                if (!res.ok) {
+                    const err = await res.json();
+                    this.joinError = err.detail || 'Failed to join';
+                    return;
+                }
+                const data = await res.json();
+                localStorage.setItem('dm_token', data.token);
+                localStorage.setItem('player_id', data.player_id);
+                localStorage.setItem('player_name', data.player_name);
+                localStorage.setItem('is_dm', data.is_dm);
+                window.location.href = `/game/${data.campaign_id}`;
+            } catch (e) {
+                this.joinError = 'Network error: ' + e.message;
+            } finally {
+                this.joinLoading = false;
+            }
+        },
+
+        async createCampaign() {
+            this.createError = '';
+            this.createLoading = true;
+            try {
+                const res = await fetch('/api/sessions', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        name: this.createForm.name,
+                        dm_password: this.createForm.dmPassword,
+                    }),
+                });
+                if (!res.ok) {
+                    const err = await res.json();
+                    this.createError = err.detail || 'Failed to create campaign';
+                    return;
+                }
+                const data = await res.json();
+                localStorage.setItem('dm_token', data.token);
+                localStorage.setItem('player_id', data.player_id);
+                localStorage.setItem('player_name', 'DM');
+                localStorage.setItem('is_dm', 'true');
+                await this.loadCampaigns();
+                window.location.href = `/game/${data.campaign.id}`;
+            } catch (e) {
+                this.createError = 'Network error: ' + e.message;
+            } finally {
+                this.createLoading = false;
+            }
+        },
+
+        openDeleteModal(campaignId, campaignName) {
+            this.deleteModal = { campaignId, campaignName, dmPassword: '', error: '', loading: false };
+            this.showDeleteModal = true;
+        },
+
+        async deleteCampaign() {
+            this.deleteModal.error = '';
+            this.deleteModal.loading = true;
+            try {
+                const res = await fetch(`/api/sessions/${this.deleteModal.campaignId}`, {
+                    method: 'DELETE',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ dm_password: this.deleteModal.dmPassword }),
+                });
+                if (!res.ok) {
+                    const err = await res.json();
+                    this.deleteModal.error = err.detail || 'Failed to delete';
+                    return;
+                }
+                this.showDeleteModal = false;
+                await this.loadCampaigns();
+            } catch (e) {
+                this.deleteModal.error = 'Network error: ' + e.message;
+            } finally {
+                this.deleteModal.loading = false;
+            }
+        },
+    };
+}
+</script>
+{% endblock %}

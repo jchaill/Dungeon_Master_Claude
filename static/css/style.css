@@ -1,0 +1,192 @@
+/* ─── Base ─────────────────────────────────────────────────────────────── */
+
+*, *::before, *::after {
+    box-sizing: border-box;
+}
+
+/* ─── Input fields ─────────────────────────────────────────────────────── */
+
+.input-field {
+    background-color: #16213e;
+    border: 1px solid #0f3460;
+    border-radius: 0.375rem;
+    color: #f3f4f6;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.875rem;
+    transition: border-color 0.15s ease;
+    outline: none;
+}
+
+.input-field:focus {
+    border-color: #f59e0b;
+    box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.2);
+}
+
+.input-field::placeholder {
+    color: #6b7280;
+}
+
+/* ─── Buttons ──────────────────────────────────────────────────────────── */
+
+.btn-primary {
+    background-color: #1d4ed8;
+    color: #fff;
+    border-radius: 0.375rem;
+    padding: 0.5rem 1rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background-color 0.15s ease, opacity 0.15s ease;
+    border: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.25rem;
+}
+
+.btn-primary:hover:not(:disabled) {
+    background-color: #2563eb;
+}
+
+.btn-primary:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.btn-gold {
+    background-color: #d97706;
+    color: #fff;
+    border-radius: 0.375rem;
+    padding: 0.5rem 1rem;
+    font-size: 0.875rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background-color 0.15s ease, opacity 0.15s ease;
+    border: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.btn-gold:hover:not(:disabled) {
+    background-color: #f59e0b;
+}
+
+.btn-gold:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.btn-secondary {
+    background-color: #374151;
+    color: #d1d5db;
+    border-radius: 0.375rem;
+    padding: 0.5rem 1rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background-color 0.15s ease;
+    border: 1px solid #4b5563;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.btn-secondary:hover {
+    background-color: #4b5563;
+    color: #fff;
+}
+
+/* ─── Labels ───────────────────────────────────────────────────────────── */
+
+.label {
+    display: block;
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: #9ca3af;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 0.25rem;
+}
+
+/* ─── Chat bubbles ─────────────────────────────────────────────────────── */
+
+.chat-bubble-dm {
+    background: linear-gradient(135deg, #1a1a2e, #16213e);
+    border-left: 3px solid #d97706;
+    color: #f3f4f6;
+    font-style: italic;
+}
+
+.chat-bubble-player {
+    background-color: #1d4ed8;
+    color: #fff;
+}
+
+.chat-bubble-other {
+    background-color: #374151;
+    color: #f3f4f6;
+}
+
+.chat-bubble-system {
+    background-color: transparent;
+    color: #6b7280;
+    font-size: 0.75rem;
+    text-align: center;
+    border: none;
+    font-style: italic;
+    padding: 0.25rem 0.5rem;
+}
+
+/* ─── Dice rolling animation ───────────────────────────────────────────── */
+
+.dice-btn {
+    transition: transform 0.1s ease;
+}
+
+.dice-btn.rolling {
+    animation: dice-spin 0.4s ease;
+}
+
+@keyframes dice-spin {
+    0%   { transform: rotate(0deg)   scale(1); }
+    25%  { transform: rotate(90deg)  scale(1.2); }
+    50%  { transform: rotate(180deg) scale(0.8); }
+    75%  { transform: rotate(270deg) scale(1.2); }
+    100% { transform: rotate(360deg) scale(1); }
+}
+
+/* ─── Typing dots ──────────────────────────────────────────────────────── */
+
+.typing-dot {
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    background-color: #9ca3af;
+    border-radius: 50%;
+    animation: typing-bounce 1s infinite ease-in-out;
+}
+
+@keyframes typing-bounce {
+    0%, 80%, 100% { transform: translateY(0); }
+    40%            { transform: translateY(-6px); }
+}
+
+/* ─── Scrollbar ────────────────────────────────────────────────────────── */
+
+::-webkit-scrollbar {
+    width: 6px;
+}
+
+::-webkit-scrollbar-track {
+    background: #0d0d0d;
+}
+
+::-webkit-scrollbar-thumb {
+    background-color: #374151;
+    border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background-color: #4b5563;
+}

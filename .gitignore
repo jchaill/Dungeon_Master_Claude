@@ -1,0 +1,24 @@
+# Environment & secrets
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+
+# Data
+data/*.db
+data/*.log
+data/chroma_db/
+
+# macOS metadata
+._*
+.DS_Store
+
+# Misc artifacts
+done
+echo
+Screenshot*
+PLAN.md

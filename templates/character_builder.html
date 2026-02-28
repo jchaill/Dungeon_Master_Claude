@@ -1,0 +1,486 @@
+{% extends "base.html" %}
+
+{% block title %}Character Builder — Dungeon Master Claude{% endblock %}
+
+{% block content %}
+<div x-data="characterBuilder()" class="max-w-3xl mx-auto">
+    <h1 class="text-3xl font-bold text-gold-400 mb-6">
+        {% if character %}Edit Character{% else %}Create Character{% endif %}
+    </h1>
+
+    <form @submit.prevent="saveCharacter()" class="space-y-6">
+
+        <!-- Basic Info -->
+        <div class="bg-dungeon-800 rounded-lg border border-dungeon-600 p-6">
+            <h2 class="text-lg font-semibold text-gold-400 mb-4">Basic Info</h2>
+            <div class="grid grid-cols-2 gap-4">
+                <div>
+                    <label class="label">Character Name</label>
+                    <input type="text" x-model="form.name" class="input-field w-full" required>
+                </div>
+                <div>
+                    <label class="label">Race</label>
+                    <select x-model="form.race" class="input-field w-full" required>
+                        <option value="">Select race...</option>
+                        {% for race in races %}
+                        <option value="{{ race }}">{{ race }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div>
+                    <label class="label">Class</label>
+                    <select x-model="form.class_name" @change="updateHitDie()" class="input-field w-full" required>
+                        <option value="">Select class...</option>
+                        {% for cls in classes %}
+                        <option value="{{ cls }}">{{ cls }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div>
+                    <label class="label">Background</label>
+                    <select x-model="form.background" class="input-field w-full">
+                        <option value="">Select background...</option>
+                        {% for bg in backgrounds %}
+                        <option value="{{ bg }}">{{ bg }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        <!-- Ability Scores -->
+        <div class="bg-dungeon-800 rounded-lg border border-dungeon-600 p-6">
+            <div class="flex items-center justify-between mb-4">
+                <h2 class="text-lg font-semibold text-gold-400">Ability Scores</h2>
+                <div class="flex gap-2">
+                    <button type="button" @click="setMode('standard')"
+                            :class="mode === 'standard' ? 'btn-gold' : 'btn-secondary'"
+                            class="text-sm px-3 py-1">Standard Array</button>
+                    <button type="button" @click="setMode('pointbuy')"
+                            :class="mode === 'pointbuy' ? 'btn-gold' : 'btn-secondary'"
+                            class="text-sm px-3 py-1">Point Buy</button>
+                    <button type="button" @click="rollAllAbilities()"
+                            :class="mode === 'roll' ? 'btn-gold' : 'btn-secondary'"
+                            class="text-sm px-3 py-1">🎲 Roll All</button>
+                </div>
+            </div>
+
+            <div x-show="mode === 'pointbuy'" class="mb-3 text-sm text-gray-400">
+                Points spent: <span x-text="pointsSpent" class="text-gold-400 font-bold"></span> / 27
+            </div>
+
+            <div class="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                <template x-for="(ability, key) in abilities" :key="key">
+                    <div class="bg-dungeon-700 rounded p-3 text-center">
+                        <div class="text-xs text-gray-400 uppercase tracking-wide mb-1" x-text="abilityLabel(key)"></div>
+                        <div class="flex items-center justify-center gap-2">
+                            <button type="button" @click="adjustScore(key, -1)"
+                                    x-show="mode === 'pointbuy'"
+                                    class="text-gray-400 hover:text-white w-6 h-6">−</button>
+                            <div>
+                                <div class="text-2xl font-bold text-white" x-text="ability.score"></div>
+                                <div class="text-xs" :class="modifier(ability.score) >= 0 ? 'text-green-400' : 'text-red-400'">
+                                    <span x-text="(modifier(ability.score) >= 0 ? '+' : '') + modifier(ability.score)"></span>
+                                </div>
+                            </div>
+                            <button type="button" @click="adjustScore(key, 1)"
+                                    x-show="mode === 'pointbuy'"
+                                    class="text-gray-400 hover:text-white w-6 h-6">+</button>
+                        </div>
+                        <button type="button" @click="rollAbility(key)"
+                                x-show="mode === 'roll'"
+                                class="mt-2 text-xs btn-secondary px-2 py-1 dice-btn"
+                                :class="{ 'rolling': rollingKey === key }">
+                            🎲 Roll
+                        </button>
+                    </div>
+                </template>
+            </div>
+
+            <!-- Standard array assign (if mode === standard) -->
+            <div x-show="mode === 'standard'" class="mt-4">
+                <p class="text-sm text-gray-400 mb-2">Assign these scores: <span class="text-gold-400">[15, 14, 13, 12, 10, 8]</span></p>
+                <div class="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                    <template x-for="(ability, key) in abilities" :key="key">
+                        <div class="flex items-center gap-2">
+                            <label class="text-sm text-gray-300 w-12" x-text="abilityLabel(key)"></label>
+                            <select x-model.number="ability.score" class="input-field flex-1 py-1">
+                                <option value="8">8</option>
+                                <option value="10">10</option>
+                                <option value="12">12</option>
+                                <option value="13">13</option>
+                                <option value="14">14</option>
+                                <option value="15">15</option>
+                            </select>
+                            <span class="text-xs w-8" :class="modifier(ability.score) >= 0 ? 'text-green-400' : 'text-red-400'"
+                                  x-text="(modifier(ability.score) >= 0 ? '+' : '') + modifier(ability.score)"></span>
+                        </div>
+                    </template>
+                </div>
+            </div>
+        </div>
+
+        <!-- Skills -->
+        <div class="bg-dungeon-800 rounded-lg border border-dungeon-600 p-6">
+            <h2 class="text-lg font-semibold text-gold-400 mb-4">Skill Proficiencies</h2>
+            <div class="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                <template x-for="skill in allSkills" :key="skill.key">
+                    <label class="flex items-center gap-2 cursor-pointer">
+                        <input type="checkbox" x-model="form.skills[skill.key]"
+                               class="rounded border-dungeon-600 bg-dungeon-700 text-gold-500">
+                        <span class="text-sm text-gray-300" x-text="skill.label"></span>
+                        <span class="text-xs text-gray-500" x-text="'(' + skill.ability + ')'"></span>
+                    </label>
+                </template>
+            </div>
+        </div>
+
+        <!-- Backstory -->
+        <div class="bg-dungeon-800 rounded-lg border border-dungeon-600 p-6">
+            <h2 class="text-lg font-semibold text-gold-400 mb-4">Backstory</h2>
+            <textarea x-model="form.backstory" rows="4"
+                      placeholder="Describe your character's history..."
+                      class="input-field w-full resize-none"></textarea>
+        </div>
+
+        <!-- Actions -->
+        <div class="bg-dungeon-800 rounded-lg border border-dungeon-600 p-6">
+            <h2 class="text-lg font-semibold text-gold-400 mb-1">Actions</h2>
+            <p class="text-xs text-gray-500 mb-4">Class features, attacks, and special abilities your character can use.</p>
+            <div class="flex gap-2 mb-3">
+                <input type="text" x-model="newAction"
+                       placeholder="e.g. Sneak Attack, Second Wind..."
+                       class="input-field flex-1"
+                       @keydown.enter.prevent="addAction()">
+                <button type="button" @click="addAction()" class="btn-secondary px-3">Add</button>
+            </div>
+            <div class="flex flex-wrap gap-2">
+                <template x-for="(action, i) in form.actions" :key="i">
+                    <span class="flex items-center gap-1 bg-dungeon-700 text-sm text-white px-2 py-1 rounded">
+                        <span x-text="action"></span>
+                        <button type="button" @click="form.actions.splice(i, 1)" class="text-gray-500 hover:text-red-400 ml-1">✕</button>
+                    </span>
+                </template>
+                <p x-show="form.actions.length === 0" class="text-xs text-gray-500">No actions added yet.</p>
+            </div>
+        </div>
+
+        <!-- Spells -->
+        <div x-show="isSpellcaster" class="bg-dungeon-800 rounded-lg border border-dungeon-600 p-6">
+            <h2 class="text-lg font-semibold text-gold-400 mb-1">Known Spells</h2>
+            <p class="text-xs text-gray-500 mb-4">Spells your character has prepared or knows.</p>
+            <div class="flex gap-2 mb-3">
+                <input type="text" x-model="newSpell"
+                       placeholder="e.g. Fireball, Cure Wounds..."
+                       class="input-field flex-1"
+                       @keydown.enter.prevent="addSpell()">
+                <button type="button" @click="addSpell()" class="btn-secondary px-3">Add</button>
+            </div>
+            <div class="flex flex-wrap gap-2">
+                <template x-for="(spell, i) in form.known_spells" :key="i">
+                    <span class="flex items-center gap-1 bg-dungeon-700 text-sm text-purple-300 px-2 py-1 rounded">
+                        <span x-text="spell"></span>
+                        <button type="button" @click="form.known_spells.splice(i, 1)" class="text-gray-500 hover:text-red-400 ml-1">✕</button>
+                    </span>
+                </template>
+                <p x-show="form.known_spells.length === 0" class="text-xs text-gray-500">No spells added yet.</p>
+            </div>
+        </div>
+
+        <!-- Inventory -->
+        <div class="bg-dungeon-800 rounded-lg border border-dungeon-600 p-6">
+            <h2 class="text-lg font-semibold text-gold-400 mb-1">Inventory</h2>
+            <p class="text-xs text-gray-500 mb-4">Items, equipment, and gear your character is carrying.</p>
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-2 mb-3">
+                <input type="text" x-model="newItem.name"
+                       placeholder="Item name"
+                       class="input-field sm:col-span-2"
+                       @keydown.enter.prevent="addItem()">
+                <input type="number" x-model.number="newItem.quantity"
+                       placeholder="Qty" min="1"
+                       class="input-field">
+            </div>
+            <div class="flex gap-2 mb-3">
+                <input type="text" x-model="newItem.description"
+                       placeholder="Description (optional)"
+                       class="input-field flex-1"
+                       @keydown.enter.prevent="addItem()">
+                <button type="button" @click="addItem()" class="btn-secondary px-3">Add</button>
+            </div>
+            <div class="space-y-2">
+                <template x-for="(item, i) in form.inventory" :key="i">
+                    <div class="flex items-start justify-between bg-dungeon-700 rounded px-3 py-2">
+                        <div>
+                            <span class="text-sm text-white" x-text="item.name"></span>
+                            <span x-show="item.quantity > 1" class="text-xs text-gray-400 ml-1" x-text="'×' + item.quantity"></span>
+                            <p x-show="item.description" class="text-xs text-gray-500 mt-0.5" x-text="item.description"></p>
+                        </div>
+                        <button type="button" @click="form.inventory.splice(i, 1)"
+                                class="text-gray-500 hover:text-red-400 ml-2 shrink-0">✕</button>
+                    </div>
+                </template>
+                <p x-show="form.inventory.length === 0" class="text-xs text-gray-500">No items added yet.</p>
+            </div>
+        </div>
+
+        <!-- Character preview -->
+        <div x-show="form.class_name" class="bg-dungeon-800 rounded-lg border border-gold-600 p-4">
+            <h3 class="text-gold-400 font-semibold mb-2">Preview</h3>
+            <div class="grid grid-cols-3 gap-4 text-center text-sm">
+                <div>
+                    <div class="text-gray-400">Max HP</div>
+                    <div class="text-2xl font-bold text-green-400" x-text="calcHp()"></div>
+                </div>
+                <div>
+                    <div class="text-gray-400">Armor Class</div>
+                    <div class="text-2xl font-bold text-blue-400" x-text="calcAc()"></div>
+                </div>
+                <div>
+                    <div class="text-gray-400">Prof. Bonus</div>
+                    <div class="text-2xl font-bold text-purple-400">+2</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Buttons -->
+        <div class="flex gap-4">
+            <button type="submit" class="btn-gold flex-1 py-3" :disabled="saveLoading">
+                <span x-show="!saveLoading">💾 Save Character</span>
+                <span x-show="saveLoading">Saving...</span>
+            </button>
+            <a href="/" class="btn-secondary flex-1 py-3 text-center">Cancel</a>
+        </div>
+
+        <p x-show="saveError" x-text="saveError" class="text-red-400 text-sm"></p>
+    </form>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/app.js"></script>
+<script>
+const CHARACTER_DATA = {{ character | tojson if character else 'null' }};
+
+function characterBuilder() {
+    return {
+        mode: 'standard',
+        rollingKey: null,
+        saveLoading: false,
+        saveError: '',
+        abilities: {
+            strength:     { score: 15 },
+            dexterity:    { score: 14 },
+            constitution: { score: 13 },
+            intelligence: { score: 12 },
+            wisdom:       { score: 10 },
+            charisma:     { score: 8 },
+        },
+        form: {
+            name: '',
+            race: '',
+            class_name: '',
+            background: '',
+            skills: {},
+            backstory: '',
+            actions: [],
+            known_spells: [],
+            inventory: [],
+        },
+        newAction: '',
+        newSpell: '',
+        newItem: { name: '', description: '', quantity: 1 },
+        spellcasterClasses: ['Bard','Cleric','Druid','Paladin','Ranger','Sorcerer','Warlock','Wizard'],
+        allSkills: [
+            { key: 'athletics',      label: 'Athletics',       ability: 'STR' },
+            { key: 'acrobatics',     label: 'Acrobatics',      ability: 'DEX' },
+            { key: 'sleight_of_hand',label: 'Sleight of Hand', ability: 'DEX' },
+            { key: 'stealth',        label: 'Stealth',         ability: 'DEX' },
+            { key: 'arcana',         label: 'Arcana',          ability: 'INT' },
+            { key: 'history',        label: 'History',         ability: 'INT' },
+            { key: 'investigation',  label: 'Investigation',   ability: 'INT' },
+            { key: 'nature',         label: 'Nature',          ability: 'INT' },
+            { key: 'religion',       label: 'Religion',        ability: 'INT' },
+            { key: 'animal_handling',label: 'Animal Handling', ability: 'WIS' },
+            { key: 'insight',        label: 'Insight',         ability: 'WIS' },
+            { key: 'medicine',       label: 'Medicine',        ability: 'WIS' },
+            { key: 'perception',     label: 'Perception',      ability: 'WIS' },
+            { key: 'survival',       label: 'Survival',        ability: 'WIS' },
+            { key: 'deception',      label: 'Deception',       ability: 'CHA' },
+            { key: 'intimidation',   label: 'Intimidation',    ability: 'CHA' },
+            { key: 'performance',    label: 'Performance',     ability: 'CHA' },
+            { key: 'persuasion',     label: 'Persuasion',      ability: 'CHA' },
+        ],
+
+        get isSpellcaster() {
+            return this.spellcasterClasses.includes(this.form.class_name);
+        },
+
+        addAction() {
+            const v = this.newAction.trim();
+            if (v && !this.form.actions.includes(v)) this.form.actions.push(v);
+            this.newAction = '';
+        },
+
+        addSpell() {
+            const v = this.newSpell.trim();
+            if (v && !this.form.known_spells.includes(v)) this.form.known_spells.push(v);
+            this.newSpell = '';
+        },
+
+        addItem() {
+            const name = this.newItem.name.trim();
+            if (!name) return;
+            this.form.inventory.push({
+                id: Date.now().toString(36) + Math.random().toString(36).slice(2),
+                name,
+                description: this.newItem.description.trim(),
+                quantity: this.newItem.quantity || 1,
+                weight: 0,
+                value: 0,
+            });
+            this.newItem.name = '';
+            this.newItem.description = '';
+            this.newItem.quantity = 1;
+        },
+
+        init() {
+            if (CHARACTER_DATA) {
+                this.form.name = CHARACTER_DATA.name;
+                this.form.race = CHARACTER_DATA.race;
+                this.form.class_name = CHARACTER_DATA.class_name;
+                this.form.background = CHARACTER_DATA.background;
+                this.form.skills = CHARACTER_DATA.skills || {};
+                this.form.backstory = CHARACTER_DATA.backstory;
+                this.form.actions = CHARACTER_DATA.actions || [];
+                this.form.known_spells = CHARACTER_DATA.known_spells || [];
+                this.form.inventory = CHARACTER_DATA.inventory || [];
+                const ab = CHARACTER_DATA.abilities;
+                if (ab) {
+                    this.abilities.strength.score = ab.strength;
+                    this.abilities.dexterity.score = ab.dexterity;
+                    this.abilities.constitution.score = ab.constitution;
+                    this.abilities.intelligence.score = ab.intelligence;
+                    this.abilities.wisdom.score = ab.wisdom;
+                    this.abilities.charisma.score = ab.charisma;
+                }
+                this.mode = 'roll';
+            }
+        },
+
+        abilityLabel(key) {
+            return key.substring(0, 3).toUpperCase();
+        },
+
+        modifier(score) {
+            return Math.floor((score - 10) / 2);
+        },
+
+        get pointsSpent() {
+            const costs = { 8: 0, 9: 1, 10: 2, 11: 3, 12: 4, 13: 5, 14: 7, 15: 9 };
+            return Object.values(this.abilities).reduce((t, a) => t + (costs[a.score] || 0), 0);
+        },
+
+        setMode(m) {
+            this.mode = m;
+            if (m === 'standard') {
+                const arr = [15, 14, 13, 12, 10, 8];
+                const keys = Object.keys(this.abilities);
+                keys.forEach((k, i) => { this.abilities[k].score = arr[i]; });
+            }
+        },
+
+        adjustScore(key, delta) {
+            const current = this.abilities[key].score;
+            const next = current + delta;
+            if (next < 8 || next > 15) return;
+            if (delta > 0 && this.pointsSpent >= 27) return;
+            this.abilities[key].score = next;
+        },
+
+        async rollAbility(key) {
+            this.rollingKey = key;
+            const res = await fetch('/api/dice/ability', { method: 'POST' });
+            const data = await res.json();
+            await new Promise(r => setTimeout(r, 400));
+            this.abilities[key].score = Math.min(20, Math.max(3, data.total));
+            this.rollingKey = null;
+        },
+
+        async rollAllAbilities() {
+            this.mode = 'roll';
+            for (const key of Object.keys(this.abilities)) {
+                await this.rollAbility(key);
+                await new Promise(r => setTimeout(r, 100));
+            }
+        },
+
+        hitDice: { Barbarian:12, Fighter:10, Paladin:10, Ranger:10, Bard:8, Cleric:8, Druid:8, Monk:8, Rogue:8, Warlock:8, Sorcerer:6, Wizard:6 },
+
+        calcHp() {
+            const hd = this.hitDice[this.form.class_name] || 8;
+            const con = this.modifier(this.abilities.constitution.score);
+            return Math.max(1, hd + con);
+        },
+
+        calcAc() {
+            return 10 + this.modifier(this.abilities.dexterity.score);
+        },
+
+        updateHitDie() { /* reactive via calcHp */ },
+
+        async saveCharacter() {
+            this.saveError = '';
+            this.saveLoading = true;
+            const token = localStorage.getItem('dm_token');
+            if (!token) {
+                this.saveError = 'No session token — please join a campaign first.';
+                this.saveLoading = false;
+                return;
+            }
+            const payload = {
+                name: this.form.name,
+                race: this.form.race,
+                class_name: this.form.class_name,
+                background: this.form.background,
+                abilities: {
+                    strength:     this.abilities.strength.score,
+                    dexterity:    this.abilities.dexterity.score,
+                    constitution: this.abilities.constitution.score,
+                    intelligence: this.abilities.intelligence.score,
+                    wisdom:       this.abilities.wisdom.score,
+                    charisma:     this.abilities.charisma.score,
+                },
+                skills: this.form.skills,
+                backstory: this.form.backstory,
+                actions: this.form.actions,
+                known_spells: this.form.known_spells,
+                inventory: this.form.inventory,
+            };
+            try {
+                const url = CHARACTER_DATA ? `/api/characters/${CHARACTER_DATA.id}` : '/api/characters';
+                const method = CHARACTER_DATA ? 'PUT' : 'POST';
+                const res = await fetch(url, {
+                    method,
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': 'Bearer ' + token,
+                    },
+                    body: JSON.stringify(payload),
+                });
+                if (!res.ok) {
+                    const err = await res.json();
+                    this.saveError = err.detail || 'Save failed';
+                    return;
+                }
+                const campaignId = new URLSearchParams(window.location.search).get('campaign_id');
+                window.location.href = campaignId ? `/game/${campaignId}` : '/';
+            } catch (e) {
+                this.saveError = 'Network error: ' + e.message;
+            } finally {
+                this.saveLoading = false;
+            }
+        },
+    };
+}
+</script>
+{% endblock %}

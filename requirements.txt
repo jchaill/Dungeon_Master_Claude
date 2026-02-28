@@ -1,0 +1,16 @@
+fastapi
+uvicorn[standard]
+python-socketio
+python-jose[cryptography]
+ollama
+httpx
+sentence-transformers
+chromadb
+aiosqlite
+pydantic[email]
+aiofiles
+loguru
+python-dotenv
+jinja2
+python-multipart
+passlib[bcrypt]

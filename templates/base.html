@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Dungeon Master Claude{% endblock %}</title>
+
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        parchment: '#f5e6c8',
+                        dungeon: {
+                            900: '#0d0d0d',
+                            800: '#1a1a2e',
+                            700: '#16213e',
+                            600: '#0f3460',
+                        },
+                        gold: {
+                            400: '#fbbf24',
+                            500: '#f59e0b',
+                            600: '#d97706',
+                        },
+                        crimson: '#dc2626',
+                    }
+                }
+            }
+        }
+    </script>
+
+    <!-- HTMX -->
+    <script src="https://unpkg.com/htmx.org@2.0.3"></script>
+
+    <!-- Alpine.js -->
+    <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
+
+    <!-- Socket.IO (loaded on game page only) -->
+    {% block head_extra %}{% endblock %}
+
+    <!-- Custom styles -->
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body class="bg-dungeon-900 text-gray-100 min-h-screen">
+    <nav class="bg-dungeon-800 border-b border-gold-600 px-4 py-3">
+        <div class="max-w-7xl mx-auto flex items-center justify-between">
+            <a href="/" class="text-gold-400 font-bold text-xl tracking-wide">
+                ⚔️ Dungeon Master Claude
+            </a>
+            <div class="flex gap-4 text-sm">
+                <a href="/" class="text-gray-300 hover:text-gold-400 transition-colors">Campaigns</a>
+                <a href="/api/health" class="text-gray-300 hover:text-gold-400 transition-colors">Health</a>
+            </div>
+        </div>
+    </nav>
+
+    <main class="{% block main_class %}max-w-7xl mx-auto px-4 py-8{% endblock %}">
+        {% block content %}{% endblock %}
+    </main>
+
+    {% block scripts %}{% endblock %}
+</body>
+</html>
