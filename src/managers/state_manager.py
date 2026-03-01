@@ -47,7 +47,7 @@ async def init_db():
                 id TEXT PRIMARY KEY,
                 campaign_id TEXT REFERENCES campaigns(id),
                 sender_id TEXT REFERENCES players(id),
-                sender_type TEXT CHECK (sender_type IN ('player', 'dm', 'system')),
+                sender_type TEXT CHECK (sender_type IN ('player', 'dm', 'system', 'roll')),
                 content TEXT NOT NULL,
                 metadata TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP

@@ -191,6 +191,63 @@ async def action(sid, data):
 
 
 @sio.event
+async def dice_roll(sid, data):
+    """Player rolls dice — broadcasts result as a chat message (no AI response triggered)."""
+    token = _sid_tokens.get(sid)
+    if not token:
+        return
+    try:
+        from .services.dice_roller import roll as do_roll
+        session = validate_token(token)
+        notation = data.get("notation", "1d20").strip().lower()
+
+        result = do_roll(notation)
+
+        # Resolve character name
+        character_name = session.player_name
+        campaign = await state_manager.get_campaign(session.campaign_id)
+        if campaign:
+            char = next((c for c in campaign.player_characters if c.player_id == session.player_id), None)
+            if char:
+                character_name = char.name
+
+        # Format content
+        if len(result.rolls) == 1:
+            content = f"🎲 {character_name} rolled {notation}: {result.total}"
+        else:
+            rolls_str = " + ".join(str(r) for r in result.rolls)
+            content = f"🎲 {character_name} rolled {notation}: {result.total} ({rolls_str})"
+        if result.modifier != 0:
+            sign = "+" if result.modifier > 0 else ""
+            content += f" [{sign}{result.modifier} modifier]"
+
+        await state_manager.save_message(
+            campaign_id=session.campaign_id,
+            sender_id=session.player_id,
+            sender_type="roll",
+            content=content,
+        )
+        await sio.emit(
+            "chat_message",
+            {
+                "sender_id": session.player_id,
+                "sender_name": character_name,
+                "sender_type": "roll",
+                "content": content,
+            },
+            room=f"campaign_{session.campaign_id}",
+        )
+    except Exception as e:
+        logger.error(f"dice_roll error: {e}")
+        await sio.emit("chat_message", {
+            "sender_id": "system",
+            "sender_name": "System",
+            "sender_type": "system",
+            "content": f"[Dice error: {e}]",
+        }, to=sid)
+
+
+@sio.event
 async def ready_toggle(sid, data):
     token = _sid_tokens.get(sid)
     if not token:

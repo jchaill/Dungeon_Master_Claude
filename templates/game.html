@@ -201,19 +201,21 @@
                  x-ref="chatBox">
                 <template x-for="msg in messages" :key="msg.id || msg.timestamp">
                     <div :class="{
-                        'flex justify-end': msg.sender_type === 'player' && msg.sender_id === playerId,
-                        'flex justify-start': msg.sender_type !== 'player' || msg.sender_id !== playerId,
+                        'flex justify-center': msg.sender_type === 'system' || msg.sender_type === 'roll',
+                        'flex justify-end':    msg.sender_type === 'player' && msg.sender_id === playerId,
+                        'flex justify-start':  msg.sender_type !== 'system' && msg.sender_type !== 'roll' && (msg.sender_type !== 'player' || msg.sender_id !== playerId),
                     }">
                         <div :class="{
                             'chat-bubble-player': msg.sender_type === 'player' && msg.sender_id === playerId,
                             'chat-bubble-dm':     msg.sender_type === 'dm',
                             'chat-bubble-system': msg.sender_type === 'system',
                             'chat-bubble-other':  msg.sender_type === 'player' && msg.sender_id !== playerId,
+                            'chat-bubble-roll':   msg.sender_type === 'roll',
                         }" class="max-w-lg rounded-lg px-4 py-2">
-                            <div x-show="msg.sender_type !== 'system'"
+                            <div x-show="msg.sender_type !== 'system' && msg.sender_type !== 'roll'"
                                  class="text-xs mb-1 opacity-70"
                                  x-text="msg.sender_name || msg.sender_type"></div>
-                            <div class="text-sm whitespace-pre-wrap" x-text="msg.content"></div>
+                            <div class="text-sm whitespace-pre-wrap" x-text="displayContent(msg)"></div>
                         </div>
                     </div>
                 </template>
@@ -244,7 +246,7 @@
                            placeholder="Describe your action or type a message..."
                            class="input-field flex-1"
                            :disabled="!connected || dmTyping || (isPaused && !isDM)">
-                    <button type="button" @click="rollD20()" class="btn-secondary px-3" title="Roll d20" :disabled="dmTyping || (isPaused && !isDM)">🎲</button>
+                    <button type="button" @click="rollDice()" class="btn-secondary px-3 dice-btn" :title="'Roll ' + pendingRoll" :disabled="!connected || dmTyping || (isPaused && !isDM)">🎲 <span x-text="pendingRoll"></span></button>
                     <button type="submit" class="btn-primary px-4" :disabled="!connected || !inputText.trim() || dmTyping || (isPaused && !isDM)">
                         <span x-show="!dmTyping">Send</span>
                         <span x-show="dmTyping" class="flex items-center gap-1">
@@ -256,7 +258,6 @@
                         </span>
                     </button>
                 </form>
-                <div x-show="lastRoll" class="text-xs text-gold-400 mt-1" x-text="lastRoll"></div>
             </div>
         </div>
 
@@ -357,6 +358,7 @@ function gameApp(campaignId) {
         combat: { is_active: false, round_number: 1, current_index: 0, combatants: [] },
         inputText: '',
         lastRoll: '',
+        pendingRoll: '1d20',
         dmTyping: false,
         isReady: false,
         isPaused: false,
@@ -392,6 +394,15 @@ function gameApp(campaignId) {
                     sender_name: m.sender_type === 'dm' ? 'Dungeon Master' : m.sender_id,
                     timestamp: m.created_at,
                 }));
+                // Restore pendingRoll from last DM message that contained a roll tag
+                for (let i = this.messages.length - 1; i >= 0; i--) {
+                    const m = this.messages[i];
+                    if (m.sender_type === 'dm') {
+                        const rollMatch = m.content.match(/\[ROLL:\s*(\d*d\d+(?:[+-]\d+)?)\]/i);
+                        if (rollMatch) { this.pendingRoll = rollMatch[1].toLowerCase(); }
+                        break;
+                    }
+                }
                 if (data.combat) this.combat = data.combat;
                 if (data.campaign) this.isPaused = data.campaign.is_paused || false;
                 // Build player list from campaign characters
@@ -430,6 +441,10 @@ function gameApp(campaignId) {
                 if (msg.sender_type === 'dm' || msg.sender_type === 'system') {
                     this.dmTyping = false;
                     clearTimeout(this._dmTypingTimeout);
+                }
+                if (msg.sender_type === 'dm') {
+                    const rollMatch = msg.content.match(/\[ROLL:\s*(\d*d\d+(?:[+-]\d+)?)\]/i);
+                    if (rollMatch) { this.pendingRoll = rollMatch[1].toLowerCase(); }
                 }
                 this.messages.push({ ...msg, timestamp: new Date().toISOString() });
                 this.$nextTick(() => this.scrollChat());
@@ -500,15 +515,16 @@ function gameApp(campaignId) {
             this.socket.emit('action', { content });
         },
 
-        async rollD20() {
-            const res = await fetch('/api/dice/roll', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ notation: 'd20' }),
-            });
-            const data = await res.json();
-            this.lastRoll = `d20: ${data.total}`;
-            setTimeout(() => { this.lastRoll = ''; }, 5000);
+        rollDice() {
+            if (!this.connected || this.dmTyping || (this.isPaused && !this.isDM)) return;
+            this.socket.emit('dice_roll', { notation: this.pendingRoll });
+        },
+
+        displayContent(msg) {
+            if (msg.sender_type === 'dm') {
+                return msg.content.replace(/\s*\[ROLL:\s*[^\]]+\]/gi, '').trim();
+            }
+            return msg.content;
         },
 
         toggleReady() {
